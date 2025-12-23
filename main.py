@@ -24,10 +24,10 @@ def decode_bcbp(image_path: str) -> str | None:
     return None
 
 if __name__ == "__main__":
-    PDF_FILE = "BoardingPass-Journey12752557598206647-R4KUVC.pdf"
+    PDF_FILE = "0_700630908.pdf"
     if not is_scanned_pdf(PDF_FILE):
         content = extract_text_pdfplumber(PDF_FILE)
-        # print(content)
+        print(content)
 
     import pdfplumber
     import os
