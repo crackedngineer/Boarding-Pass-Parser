@@ -1,0 +1,13 @@
+[project]
+name = "boarding-pass-parser"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.135.1",
+    "numpy>=2.4.3",
+    "pdfplumber>=0.11.9",
+    "pytz>=2026.1.post1",
+    "zxing-cpp>=3.0.0",
+]
