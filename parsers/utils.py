@@ -1,21 +1,11 @@
-import re
 from pathlib import Path
 import pdfplumber
 
 
 def is_valid_bcbp(data: str) -> bool:
-    if not data.startswith("M1"):
+    if not data.startswith("M1") or len(data) < 60:
         return False
-
-    checks = [
-        r"[A-Z\s]+/[A-Z]+",  # name
-        r"\b(?=.*[A-Z])(?=.*\d)[A-Z0-9]{6}\b",  # PNR
-        r"\b(?=.*[A-Z])(?=.*\d)[A-Z0-9]{8}\b",  # route
-        r"\b[0-9]{4}\b",   # flight number
-    ]
-
-    print(all(re.search(p, data) for p in checks))
-    return len(data.strip()) > 60 and all(re.search(p, data) for p in checks)
+    return True
 
 
 def is_pdf_valid(pdf_path: Path) -> bool:
