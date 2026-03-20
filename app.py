@@ -10,18 +10,19 @@
 # async def root():
 #     return {"message": "Welcome to the Boarding Pass Parser API. Go to /docs for API documentation."}
 
+import os
+
 from parsers.dataclass import ParsedBoardingPass
 from parsers.factory import ParserFactory
-from utils import extract_text_pdfplumber, is_scanned_pdf
 
 class BoardingPassService:
 
     def __init__(self, factory: ParserFactory):
         self.factory = factory
 
-    def process(self, content: str, pdf_path: str) -> ParsedBoardingPass:
-        parser = self.factory.get_parser(content)
-        result = parser.parse(content, pdf_path=pdf_path)
+    def process(self, pdf_path: str) -> ParsedBoardingPass:
+        parser = self.factory.get_parser(pdf_path)
+        result = parser.parse(pdf_path=pdf_path)
 
         return result
     
@@ -29,8 +30,6 @@ if __name__ == "__main__":
     factory = ParserFactory()
     service = BoardingPassService(factory)
 
-    PDF_FILE = "0_700630908.pdf"
-    if not is_scanned_pdf(PDF_FILE):
-        content = extract_text_pdfplumber(PDF_FILE)
-        parsed = service.process(content, pdf_path=PDF_FILE)
-        print(parsed)
+    PDF_FILE = os.path.join("samples", "gofirst_sample_0.pdf")
+    parsed = service.process(pdf_path=PDF_FILE)
+    print(parsed)

@@ -1,11 +1,28 @@
 import re
+import pdfplumber
+
 
 def is_valid_bcbp(data: str) -> bool:
-    pattern = (
-        r"^M1"                         # format code
-        r"[A-Z]+/[A-Z]+/[A-Z]\s+"      # NAME (LAST/FIRST/TITLE)
-        r"[A-Z0-9]{6}\s+"              # PNR
-        r"[A-Z]{3}[A-Z]{3}"            # FROM + TO
-        r"[A-Z0-9]{2}\s?\d{3,4}"       # airline + flight
-    )
-    return len(data.strip()) > 60 and re.search(pattern, data) is not None
+    if not data.startswith("M1"):
+        return False
+
+    checks = [
+        r"[A-Z\s]+/[A-Z]+",  # name
+        r"\b(?=.*[A-Z])(?=.*\d)[A-Z0-9]{6}\b",  # PNR
+        r"\b(?=.*[A-Z])(?=.*\d)[A-Z0-9]{8}\b",  # route
+        r"\b[0-9]{4}\b",   # flight number
+    ]
+
+    print(all(re.search(p, data) for p in checks))
+    return len(data.strip()) > 60 and all(re.search(p, data) for p in checks)
+
+
+def is_scanned_pdf(pdf_path):
+    with pdfplumber.open(pdf_path) as pdf:
+        text = "".join(page.extract_text() or "" for page in pdf.pages)
+        return len(text.strip()) < 50
+
+
+def extract_text_pdfplumber(pdf_path):
+    with pdfplumber.open(pdf_path) as pdf:
+        return "\n".join(page.extract_text() or "" for page in pdf.pages)
