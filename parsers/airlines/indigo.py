@@ -5,9 +5,8 @@ from parsers.base import BoardingPassParser
 from parsers.dataclass import ParsedBoardingPass
 
 class IndigoParser(BoardingPassParser):
-    airline_code = "6E"
-
     def __init__(self):
+        self.airline_code = "6E"
         super().__init__()
     
     def deduplicate_block(self, raw_data: str) -> str:
@@ -48,47 +47,55 @@ class IndigoParser(BoardingPassParser):
         dt = tz.localize(dt)
         return dt.isoformat()
 
-    def _parse_content(self, bp: ParsedBoardingPass, raw_data: str) -> ParsedBoardingPass:
+    def _parse_content(self, raw_data: str) -> ParsedBoardingPass:
         # Remove duplicates
         raw_data = self.deduplicate_block(raw_data)
         raw_data = self.deduplicate_text(raw_data)
         print("Deduplicated Data:\n", raw_data)
 
         # Pnr Code
-        pnr_match = re.search(r"\bPNR\s+?([A-Z0-9]{6})\b", raw_data, re.IGNORECASE)
-        if pnr_match:
-            bp.pnr_code = pnr_match.group(1).upper()
+        if not self.bp_details.pnr_code:
+            pnr_match = re.search(r"\bPNR\s+?([A-Z0-9]{6})\b", raw_data, re.IGNORECASE)
+            if pnr_match:
+                self.bp_details.pnr_code = pnr_match.group(1).upper()
 
         # Passenger Name
-        name_match = re.search(r"[A-Z]+/[A-Z]+\s+(MR|MRS|MS|MSTR)", raw_data)
-        if name_match:
-            bp.passenger_name = name_match.group(0)
+        if not self.bp_details.passenger_firstname or not self.bp_details.passenger_lastname:
+            name_match = re.search(r"[A-Z]+/[A-Z]+\s+(MRS|MR|MS|MSTR|DR)", raw_data)
+            if name_match:
+                fullname = name_match.group(0).split("/")
+                self.bp_details.passenger_firstname = str(re.sub('(MRS|MR|MS|MSTR|DR)$','',fullname[1]).replace(" ", ""))
+                self.bp_details.passenger_lastname = str(fullname[0].replace(" ", ""))
         
         # Flight Number
-        flight_match = re.search(rf"\b{self.airline_code}\s?(\d{{3,4}})\b", raw_data, re.IGNORECASE)
-        if flight_match:
-            bp.flight_number = flight_match.group(1)
+        if not self.bp_details.flight_number:
+            flight_match = re.search(rf"\b{self.airline_code}\s?(\d{{3,4}})\b", raw_data, re.IGNORECASE)
+            if flight_match:
+                self.bp_details.flight_number = flight_match.group(1)
         
         # Route
-        route_match = re.search(r"\n([A-Z]+(?:\s[A-Z]+)*)\s+\(T\d\)\s+To\s+([A-Z]+(?:\s[A-Z]+)*)\n", raw_data, re.IGNORECASE)
-        if route_match:
-            bp.origin = route_match.group(1).strip()
-            bp.destination = route_match.group(2).strip()
+        if not self.bp_details.origin or not self.bp_details.destination:
+            route_match = re.search(r"\n([A-Z]+(?:\s[A-Z]+)*)\s+\(T\d\)\s+To\s+([A-Z]+(?:\s[A-Z]+)*)\n", raw_data, re.IGNORECASE)
+            if route_match:
+                self.bp_details.origin = route_match.group(1).strip()
+                self.bp_details.destination = route_match.group(2).strip()
         
         # Seat
-        seat_match = re.search(r"\bSeat\s+([A-Z]?\d{1,2}[A-F]?)\b", raw_data, re.IGNORECASE)
-        if seat_match:
-            bp.seat_number = seat_match.group(1)
+        if not self.bp_details.seat_number:
+            seat_match = re.search(r"\bSeat\s+([A-Z]?\d{1,2}[A-F]?)\b", raw_data, re.IGNORECASE)
+            if seat_match:
+                self.bp_details.seat_number = seat_match.group(1)
         
         # Boarding Group
-        group_match = re.search(r"Zone\s+(\d+)", raw_data, re.IGNORECASE)
-        if group_match:
-            bp.boarding_group = group_match.group(1)
+        if not self.bp_details.boarding_group:
+            group_match = re.search(r"Zone\s+(\d+)", raw_data, re.IGNORECASE)
+            if group_match:
+                self.bp_details.boarding_group = group_match.group(1)
         
         # Departure Date Time
         date_match = re.search(r"Date\s+(\d{2}\s+[A-Za-z]{3}\s+\d{4})", raw_data)
         time_match = re.search(r"Departure\s+(\d{3,4})\s*Hrs", raw_data)
         if date_match and time_match:
-            bp.departure_time = self.parse_departure_datetime(date_match.group(1), time_match.group(1))
+            self.bp_details.departure_time = self.parse_departure_datetime(date_match.group(1), time_match.group(1))
 
-        return bp
+        return self.bp_details

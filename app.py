@@ -10,7 +10,7 @@
 # async def root():
 #     return {"message": "Welcome to the Boarding Pass Parser API. Go to /docs for API documentation."}
 
-import os
+from argparse import ArgumentParser
 
 from parsers.dataclass import ParsedBoardingPass
 from parsers.factory import ParserFactory
@@ -22,14 +22,18 @@ class BoardingPassService:
 
     def process(self, pdf_path: str) -> ParsedBoardingPass:
         parser = self.factory.get_parser(pdf_path)
-        result = parser.parse(pdf_path=pdf_path)
+        result = parser.parse()
 
         return result
     
 if __name__ == "__main__":
+    parser = ArgumentParser()
+    parser.add_argument("-f", "--file", help="Path to the boarding pass PDF file", required=True)
+    args = parser.parse_args()
+    
     factory = ParserFactory()
     service = BoardingPassService(factory)
 
-    PDF_FILE = os.path.join("samples", "gofirst_sample_0.pdf")
+    PDF_FILE = args.file
     parsed = service.process(pdf_path=PDF_FILE)
     print(parsed)

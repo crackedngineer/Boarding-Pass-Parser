@@ -1,29 +1,37 @@
 from pathlib import Path
 from abc import ABC, abstractmethod
-import io
+import re
 import numpy as np
+from datetime import datetime
 from PIL import Image
 import zxingcpp
 import pdfplumber
 from parsers.dataclass import ParsedBoardingPass
-from parsers.utils import extract_text_pdfplumber, is_scanned_pdf, is_valid_bcbp
+from parsers.utils import extract_text_pdfplumber, is_pdf_valid, is_valid_bcbp
 
 class BoardingPassParser(ABC):
     def __init__(self):
-        self.raw_data = None
+        self._raw_data = None
+        self.bp_details = ParsedBoardingPass(airline_code=self.airline_code)
+
+    @property
+    def raw_data(self):
+        if self._raw_data is None:
+            self._raw_data = extract_text_pdfplumber(self.pdf_path)
+        return self._raw_data
     
     @property
-    @abstractmethod
-    def airline_code(self) -> bool:
-        pass
+    def pdf_path(self): 
+        return self._pdf_path
     
-    def can_handle(self, pdf_path: Path) -> bool:
-        if is_scanned_pdf(pdf_path):
-            return False
-        
-        content = extract_text_pdfplumber(pdf_path)
-        self.raw_data = content
-        return self._can_handle(content)
+    @pdf_path.setter
+    def pdf_path(self, value: Path):
+        if value is None or not is_pdf_valid(value):
+            raise ValueError("Invalid PDF: Either scanned or too short")
+        self._pdf_path = value
+    
+    def can_handle(self) -> bool:
+        return self._can_handle(self.raw_data)
     
     @abstractmethod
     def _can_handle(self, raw_data: str) -> bool:
@@ -47,19 +55,31 @@ class BoardingPassParser(ABC):
                         print(f"✅ Found on page {page_number}")
                         return data
         return ""
-
-    def parse(self, pdf_path: Path) -> ParsedBoardingPass:
-        if is_scanned_pdf(pdf_path):
-            raise ValueError("Cannot parse scanned PDF")
+    
+    def parse_bcbp(self, bcbp_data: str) -> None:
+        result = {}
+        name_bcbp = bcbp_data[2:22].replace(" ", "")
+        fullname = name_bcbp.split("/")
+        self.bp_details.passenger_firstname = str(re.sub('(MRS|MR|MS|MSTR|DR)$','',fullname[1]).replace(" ", ""))
+        self.bp_details.passenger_lastname = str(fullname[0].replace(" ", ""))
         
-        bp = ParsedBoardingPass(airline_code=self.airline_code)
-        barcode_data = self.extract_bcbp_barcode(pdf_path)
-        print("Extracted Barcode Data:", barcode_data)
-        return bp
-        if self.raw_data is None:
-            content = extract_text_pdfplumber(pdf_path)
-        return self._parse_content(bp, content)
+        self.bp_details.pnr_code = str(bcbp_data[22:30].replace(" ", ""))
+        self.bp_details.origin = str(bcbp_data[30:33].replace(" ", ""))
+        self.bp_details.destination = str(bcbp_data[33:36].replace(" ", ""))
+        self.bp_details.operator_code = str(bcbp_data[36:38].replace(" ", ""))
+        self.bp_details.flight_number = str(bcbp_data[39:43].replace(" ", ""))
+        self.bp_details.departure_time = str(datetime.strptime(bcbp_data[44:47], '%j').strftime('%d/%b'))
+        self.bp_details.cabin_class = str(bcbp_data[47].replace(" ", ""))
+        self.bp_details.seat_number = str(bcbp_data[48:52].replace(" ", ""))
+        self.bp_details.checkin_sequence = str(bcbp_data[52:56].replace(" ", ""))
+        
+        return result
+
+    def parse(self) -> ParsedBoardingPass:
+        barcode_data = self.extract_bcbp_barcode(self._pdf_path)
+        self.parse_bcbp(barcode_data)
+        return self._parse_content(self.raw_data)
         
     @abstractmethod
-    def _parse_content(self, bp: ParsedBoardingPass, content: str) -> ParsedBoardingPass:
+    def _parse_content(self, content: str) -> ParsedBoardingPass:
         pass

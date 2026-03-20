@@ -10,7 +10,9 @@ class BoardingPass:
 @dataclass
 class ParsedBoardingPass:
     pnr_code: Optional[str] = None
-    passenger_name: Optional[str] = None
+    passenger_firstname: Optional[str] = None
+    passenger_lastname: Optional[str] = None
+    operator_code: Optional[str] = None
     airline_code: Optional[str] = None
     flight_number: Optional[str] = None
     origin: Optional[str] = None
@@ -18,3 +20,5 @@ class ParsedBoardingPass:
     seat_number: Optional[str] = None
     boarding_group: Optional[str] = None
     departure_time: Optional[str] = None
+    cabin_class: Optional[str] = None
+    checkin_sequence: Optional[str] = None

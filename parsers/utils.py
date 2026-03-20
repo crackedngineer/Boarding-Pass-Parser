@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 import pdfplumber
 
 
@@ -17,12 +18,12 @@ def is_valid_bcbp(data: str) -> bool:
     return len(data.strip()) > 60 and all(re.search(p, data) for p in checks)
 
 
-def is_scanned_pdf(pdf_path):
+def is_pdf_valid(pdf_path: Path) -> bool:
     with pdfplumber.open(pdf_path) as pdf:
         text = "".join(page.extract_text() or "" for page in pdf.pages)
-        return len(text.strip()) < 50
+        return len(text.strip()) >= 50
 
 
-def extract_text_pdfplumber(pdf_path):
+def extract_text_pdfplumber(pdf_path: Path) -> str:
     with pdfplumber.open(pdf_path) as pdf:
         return "\n".join(page.extract_text() or "" for page in pdf.pages)
