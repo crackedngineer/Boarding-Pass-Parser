@@ -5,8 +5,8 @@ from parsers.base import BoardingPassParser
 from parsers.dataclass import ParsedBoardingPass
 
 class IndigoParser(BoardingPassParser):
+    airline_code = "6E"
     def __init__(self):
-        self.airline_code = "6E"
         super().__init__()
     
     def deduplicate_block(self, raw_data: str) -> str:

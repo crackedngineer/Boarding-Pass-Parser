@@ -10,6 +10,8 @@ from parsers.dataclass import ParsedBoardingPass
 from parsers.utils import extract_text_pdfplumber, is_pdf_valid, is_valid_bcbp
 
 class BoardingPassParser(ABC):
+    airline_code: str
+
     def __init__(self):
         self._raw_data = None
         self.bp_details = ParsedBoardingPass(operator_code=self.airline_code)
@@ -57,7 +59,6 @@ class BoardingPassParser(ABC):
         return ""
     
     def parse_bcbp(self, bcbp_data: str) -> None:
-        result = {}
         name_bcbp = bcbp_data[2:22].replace(" ", "")
         fullname = name_bcbp.split("/")
         self.bp_details.passenger_firstname = str(re.sub('(MRS|MR|MS|MSTR|DR)$','',fullname[1]).replace(" ", ""))
@@ -72,8 +73,6 @@ class BoardingPassParser(ABC):
         self.bp_details.cabin_class = str(bcbp_data[47].replace(" ", ""))
         self.bp_details.seat_number = str(bcbp_data[48:52].replace(" ", ""))
         self.bp_details.checkin_sequence = str(bcbp_data[52:56].replace(" ", ""))
-        
-        return result
 
     def parse(self) -> ParsedBoardingPass:
         barcode_data = self.extract_bcbp_barcode(self._pdf_path)
