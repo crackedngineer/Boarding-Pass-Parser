@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from .endpoints.authentication import router as auth_router
+from .endpoints.auth import router as auth_router
 
 routers = APIRouter()
 router_list = [auth_router]

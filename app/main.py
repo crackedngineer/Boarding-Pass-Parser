@@ -1,11 +1,20 @@
 from fastapi import FastAPI
-from routes.v1.routes import routers as v1_routers
+from fastapi.middleware.cors import CORSMiddleware
+from app.routes.v1.routes import routers as v1_routers
 
 app = FastAPI(
     title="FlightTracr API",
     version="0.0.1",
     description="API for parsing boarding passes and managing user data.",
 )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(v1_routers, prefix="/api/v1")
 
 
