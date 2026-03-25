@@ -7,7 +7,7 @@ router = APIRouter(
 )
 
 from fastapi import APIRouter, Depends
-from app.services.google_oauth import GoogleOAuthService
+from backend.services.google_oauth import GoogleOAuthService
 
 router = APIRouter()
 

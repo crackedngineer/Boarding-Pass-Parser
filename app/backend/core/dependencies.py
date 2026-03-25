@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 from supabase import create_client
-from app.core.settings import get_settings
+from backend.core.settings import get_settings
 
 settings = get_settings()
 print(settings)
