@@ -1,0 +1,14 @@
+/**
+ * API Services barrel export.
+ * Provides a single entry point for all API services.
+ */
+
+export { default as httpClient } from './http-client';
+export { default as authService } from './auth-service';
+export { default as boardingPassService } from './boarding-pass-service';
+export { default as healthService } from './health-service';
+
+// Export classes for type usage
+export { AuthService } from './auth-service';
+export { BoardingPassService } from './boarding-pass-service';
+export { HealthService } from './health-service';
