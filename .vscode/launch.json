@@ -5,12 +5,33 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python Debugger: Current File with Arguments",
+      "name": "Python Debugger: Start vLEM server",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/app.py",
+      "module": "uvicorn",
+      "justMyCode": true,
+      "args": ["main:app", "--reload"],
+      "cwd": "${workspaceFolder}/api",
+      "envFile": "${workspaceFolder}/api/.env",
+      "jinja": true
+    },
+    {
+      "name": "Python: Celery Worker",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "celery",
       "console": "integratedTerminal",
-      "args": ["-f", "samples/akasa_air_0.pdf"]
+      "args": [
+        "-A",
+        "app.tasks.celery_app",
+        "worker",
+        "-l",
+        "info",
+        "-P",
+        "solo"
+      ],
+      "cwd": "${workspaceFolder}/api",
+      "envFile": "${workspaceFolder}/api/.env"
     }
   ]
 }

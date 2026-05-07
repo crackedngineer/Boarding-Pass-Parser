@@ -1,0 +1,37 @@
+# Production — postgres and redis are external managed services.
+# Populate api/.env.prod and web/.env.production before deploying.
+
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./api/.env.prod
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    restart: unless-stopped
+
+  celery:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    env_file:
+      - ./api/.env.prod
+    command: uv run celery -A app.tasks.celery_app worker --loglevel=info --pool=prefork --concurrency=2
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./web/.env.production
+    restart: unless-stopped
+    depends_on:
+      - api
