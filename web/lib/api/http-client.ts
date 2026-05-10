@@ -35,17 +35,10 @@ class HttpClient {
       ...((options.headers as Record<string, string>) || {}),
     };
 
-    // Add authentication header if needed
-    if (config.includeAuth !== false) {
-      const token = this.getAuthToken();
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-    }
-
     const requestOptions: RequestInit = {
       ...options,
       headers,
+      credentials: 'include',
     };
 
     let attempt = 0;
@@ -160,14 +153,6 @@ class HttpClient {
       { method: 'POST', body: formData },
       { ...config, includeAuth: config?.includeAuth !== false }
     );
-  }
-
-  /**
-   * Get authentication token from localStorage
-   */
-  private getAuthToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('access_token');
   }
 
   /**

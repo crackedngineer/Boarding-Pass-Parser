@@ -3,22 +3,29 @@ from typing import Optional
 from supabase import Client, create_client
 from supabase_auth import CodeExchangeParams
 from app.core.exceptions import AuthenticationException
+from redis.asyncio import Redis
 from supabase_auth import SignInWithOAuthCredentials, SignInWithOAuthCredentialsOptions
+from supabase_auth.types import AuthResponse
 
 logger = logging.getLogger(__name__)
 
 
 class AuthService:
-    def __init__(self, supabase_client: Client):
+    def __init__(self, supabase_client: Client, redis_client: Redis):
         self.supabase_client = supabase_client
+        self.redis_client = redis_client
 
     async def authenticate_with_google(self) -> dict:
         from app.core.settings import get_settings
 
         settings = get_settings()
         options: SignInWithOAuthCredentialsOptions = {
-            "scopes": "https://www.googleapis.com/auth/gmail.readonly",
-            "query_params": {"access_type": "offline", "prompt": "consent"},
+            "scopes": "openid email profile https://www.googleapis.com/auth/gmail.readonly",
+            "query_params": {
+                "access_type": "offline",
+                "prompt": "consent",
+                "include_granted_scopes": "true",
+            },
         }
         if settings.google_redirect_uri:
             options["redirect_to"] = settings.google_redirect_uri
@@ -39,7 +46,10 @@ class AuthService:
         except Exception:
             logger.debug("Could not extract PKCE code_verifier from gotrue storage")
 
-        return {"url": result.url, "code_verifier": code_verifier}
+        return {
+            "url": result.url,
+            "code_verifier": code_verifier,
+        }
 
     async def get_current_user(self, access_token: str) -> dict:
         resp = self.supabase_client.auth.get_user(access_token)
@@ -52,7 +62,7 @@ class AuthService:
             "app_metadata": resp.user.app_metadata,
         }
 
-    async def refresh_token(self, refresh_token: str) -> object:
+    async def refresh_token(self, refresh_token: str) -> AuthResponse:
         try:
             result = self.supabase_client.auth.refresh_session(refresh_token)
         except Exception as e:
@@ -65,13 +75,16 @@ class AuthService:
         self.supabase_client.auth.sign_out()
 
     def exchange_code_for_session(
-        self, code: str, code_verifier: Optional[str] = None
-    ) -> object:
-        params = {"auth_code": code}
-        if code_verifier:
-            params["code_verifier"] = code_verifier
+        self, code: str, redirect_url: str, code_verifier: str
+    ) -> AuthResponse:
         result = self.supabase_client.auth.exchange_code_for_session(
-            CodeExchangeParams(**params)
+            CodeExchangeParams(
+                **{
+                    "auth_code": code,
+                    "redirect_to": redirect_url,
+                    "code_verifier": code_verifier,
+                }
+            )
         )
         if not result or not result.session:
             raise AuthenticationException("Code exchange failed")

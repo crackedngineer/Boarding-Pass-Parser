@@ -40,8 +40,6 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       DEBUG: "true"
-    volumes:
-      - ./api:/app
     command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       postgres:
@@ -61,8 +59,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-    volumes:
-      - ./api:/app
+    # volumes:
+    #   - ./api:/app
     command: uv run celery -A app.tasks.celery_app worker --loglevel=info --pool=prefork
     depends_on:
       postgres:
@@ -70,23 +68,23 @@ services:
       redis:
         condition: service_healthy
 
-  web:
-    build:
-      context: ./web
-      dockerfile: Dockerfile.dev
-    ports:
-      - "3000:3000"
-    env_file:
-      - ./web/.env.local
-    environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
-      NEXT_PUBLIC_API_URL: http://localhost:8000
-    volumes:
-      - ./web:/app
-      - /app/node_modules
-      - /app/.next
-    depends_on:
-      - api
+  # web:
+  #   build:
+  #     context: ./web
+  #     dockerfile: Dockerfile.dev
+  #   ports:
+  #     - "3000:3000"
+  #   env_file:
+  #     - ./web/.env.local
+  #   environment:
+  #     NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
+  #     NEXT_PUBLIC_API_URL: http://localhost:8000
+  #   volumes:
+  #     - ./web:/app
+  #     - /app/node_modules
+  #     - /app/.next
+  #   depends_on:
+  #     - api
 
 volumes:
   postgres_data:

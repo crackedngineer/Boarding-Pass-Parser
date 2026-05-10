@@ -4,10 +4,19 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # OAuth
+    # OAuth — Google
     google_client_id: Optional[str] = None
     google_redirect_uri: Optional[str] = None
     google_client_secret: Optional[str] = None
+
+    # OAuth — Microsoft (Outlook)
+    microsoft_client_id: Optional[str] = None
+    microsoft_client_secret: Optional[str] = None
+    microsoft_redirect_uri: Optional[str] = None
+
+    # App URLs
+    base_url: str = "http://localhost:8000"
+    frontend_url: str = "http://localhost:3000"
 
     # Database
     supabase_url: str

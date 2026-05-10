@@ -1,159 +1,200 @@
-﻿import uuid
+import uuid
 from datetime import date, datetime
 from typing import Optional
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 from sqlalchemy import select, delete
-from app.models.flight import Flight
-from app.parsers.dataclass import ParsedBoardingPass
-from app.parsers.enum import AirlineCodeEnum
+from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.flight import Booking, Flight, Passenger, BoardingPass
+from app.models.airline import Airline
+from app.models.airport import Airport
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Map airline code → display name
-_AIRLINE_NAMES: dict[str, str] = {
-    member.value: member.name.replace("_", " ").title()
-    for member in AirlineCodeEnum
-}
-_AIRLINE_NAMES.update({"6E": "IndiGo", "QP": "Akasa Air"})
 
-
-def _parse_departure(dep_time_str: Optional[str]) -> tuple[Optional[date], Optional[str]]:
-    """
-    Normalise the departure_time field from ParsedBoardingPass into (date, HH:MM).
-    BCBP decoder produces "dd/Mon" (no year); airline parsers may produce full ISO.
-    """
+def _parse_departure_to_datetime(dep_time_str: Optional[str]) -> Optional[datetime]:
     if not dep_time_str:
-        return None, None
+        return None
     try:
-        # Try full ISO first
-        dt = datetime.fromisoformat(dep_time_str.replace("Z", "+00:00"))
-        return dt.date(), dt.strftime("%H:%M")
+        return datetime.fromisoformat(dep_time_str.replace("Z", "+00:00"))
     except ValueError:
         pass
     try:
-        # "dd/Mon" — assume nearest future occurrence
-        from datetime import timedelta
         d = datetime.strptime(dep_time_str, "%d/%b")
         today = date.today()
         candidate = d.replace(year=today.year).date()
         if candidate < today:
             candidate = candidate.replace(year=today.year + 1)
-        return candidate, None
+        return datetime(candidate.year, candidate.month, candidate.day)
     except ValueError:
         pass
-    return None, None
+    return None
 
 
-def parsed_to_flight(
-    parsed: ParsedBoardingPass,
-    user_id: str,
-    gmail_message_id: Optional[str] = None,
+# ── Sync lookup helpers ───────────────────────────────────────────────────────
+
+def get_airline_by_iata_sync(session: Session, iata_code: str) -> Optional[Airline]:
+    return session.execute(
+        select(Airline).where(Airline.iata_code == iata_code.upper().strip())
+    ).scalar_one_or_none()
+
+
+def get_airport_by_iata_sync(session: Session, iata_code: str) -> Optional[Airport]:
+    return session.execute(
+        select(Airport).where(Airport.iata_code == iata_code.upper().strip())
+    ).scalar_one_or_none()
+
+
+# ── Sync upsert operations (Celery) ──────────────────────────────────────────
+
+def upsert_booking_sync(session: Session, user_id: str, airline_id: int,
+                     pnr_code: str, source: str = "gmail") -> Booking:
+    uid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+    existing = session.execute(
+        select(Booking).where(Booking.user_id == uid, Booking.airline_id == airline_id, Booking.pnr_code == pnr_code)
+    ).scalar_one_or_none()
+    if existing:
+        return existing
+    booking = Booking(user_id=uid, airline_id=airline_id, pnr_code=pnr_code, source=source)
+    session.add(booking)
+    session.flush()
+    return booking
+
+
+def upsert_flight_sync(
+    session: Session, booking_id: uuid.UUID, airline_id: int,
+    dep_airport_id: uuid.UUID, arr_airport_id: uuid.UUID,
+    flight_number: str, departure_time: datetime,
+    arrival_time: Optional[datetime] = None,
+    gate: Optional[str] = None, terminal: Optional[str] = None,
 ) -> Flight:
-    dep_date, dep_time = _parse_departure(parsed.departure_time)
-    status = "upcoming" if dep_date and dep_date >= date.today() else "completed"
-    airline_code = (parsed.operator_code or "").strip()
-    flight_number = f"{airline_code}{(parsed.flight_number or '').strip()}"
-
-    return Flight(
-        user_id=uuid.UUID(user_id) if isinstance(user_id, str) else user_id,
-        flight_number=flight_number,
-        airline_code=airline_code,
-        airline_name=_AIRLINE_NAMES.get(airline_code),
-        pnr_code=(parsed.pnr_code or "").strip() or None,
-        passenger_firstname=parsed.passenger_firstname,
-        passenger_lastname=parsed.passenger_lastname,
-        departure_airport=(parsed.origin or "").strip().upper(),
-        arrival_airport=(parsed.destination or "").strip().upper(),
-        departure_date=dep_date or date.today(),
-        departure_time=dep_time,
-        seat_number=parsed.seat_number,
-        cabin_class=parsed.cabin_class,
-        boarding_group=parsed.boarding_group,
-        status=status,
-        source="gmail",
-        gmail_message_id=gmail_message_id,
+    existing = session.execute(
+        select(Flight).where(
+            Flight.booking_id == booking_id, Flight.flight_number == flight_number,
+            Flight.airline_id == airline_id, Flight.departure_time == departure_time,
+        )
+    ).scalar_one_or_none()
+    if existing:
+        return existing
+    flight = Flight(
+        booking_id=booking_id, airline_id=airline_id,
+        departure_airport=dep_airport_id, arrival_airport=arr_airport_id,
+        flight_number=flight_number, departure_time=departure_time,
+        arrival_time=arrival_time, gate=gate, terminal=terminal,
     )
-
-
-# ── Async CRUD (FastAPI) ───────────────────────────────────────────────────────
-
-async def list_flights(
-    session: AsyncSession,
-    user_id: str,
-    status_filter: Optional[str] = None,
-) -> list[Flight]:
-    uid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
-    stmt = select(Flight).where(Flight.user_id == uid).order_by(Flight.departure_date.desc())
-    if status_filter:
-        stmt = stmt.where(Flight.status == status_filter)
-    result = await session.execute(stmt)
-    return list(result.scalars().all())
-
-
-async def get_flight(session: AsyncSession, user_id: str, flight_id: str) -> Optional[Flight]:
-    uid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
-    fid = uuid.UUID(flight_id) if isinstance(flight_id, str) else flight_id
-    result = await session.execute(
-        select(Flight).where(Flight.id == fid, Flight.user_id == uid)
-    )
-    return result.scalar_one_or_none()
-
-
-async def delete_flight(session: AsyncSession, user_id: str, flight_id: str) -> bool:
-    uid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
-    fid = uuid.UUID(flight_id) if isinstance(flight_id, str) else flight_id
-    result = await session.execute(
-        delete(Flight).where(Flight.id == fid, Flight.user_id == uid)
-    )
-    return result.rowcount > 0
-
-
-# ── Sync upsert (Celery worker) ───────────────────────────────────────────────
-
-def upsert_flight_sync(session: Session, flight: Flight) -> Flight:
-    """Insert a flight, skipping silently if either dedup key already exists."""
-    # Primary dedup: same email attachment
-    if flight.gmail_message_id:
-        existing = session.execute(
-            select(Flight).where(
-                Flight.user_id == flight.user_id,
-                Flight.gmail_message_id == flight.gmail_message_id,
-            )
-        ).scalar_one_or_none()
-        if existing:
-            return existing
-
-    # Secondary dedup: same flight appearing in a different email
-    # (mirrors the uq_flights_user_pnr_flight_date DB constraint)
-    if flight.pnr_code and flight.flight_number and flight.departure_date:
-        existing = session.execute(
-            select(Flight).where(
-                Flight.user_id == flight.user_id,
-                Flight.pnr_code == flight.pnr_code,
-                Flight.flight_number == flight.flight_number,
-                Flight.departure_date == flight.departure_date,
-            )
-        ).scalar_one_or_none()
-        if existing:
-            # Backfill gmail_message_id if the earlier record didn't have one
-            if flight.gmail_message_id and not existing.gmail_message_id:
-                existing.gmail_message_id = flight.gmail_message_id
-            return existing
-
     session.add(flight)
     session.flush()
     return flight
 
 
-def get_existing_gmail_ids_sync(session: Session, user_id: str, gmail_ids: list[str]) -> set[str]:
-    """Bulk check which gmail_message_ids are already in the DB."""
+def upsert_passenger_sync(session: Session, booking_id: uuid.UUID,
+                           first_name: Optional[str], last_name: Optional[str]) -> Passenger:
+    fn, ln = (first_name or "").strip(), (last_name or "").strip()
+    existing = session.execute(
+        select(Passenger).where(
+            Passenger.booking_id == booking_id, Passenger.first_name == fn, Passenger.last_name == ln,
+        )
+    ).scalar_one_or_none()
+    if existing:
+        return existing
+    passenger = Passenger(booking_id=booking_id, first_name=fn, last_name=ln)
+    session.add(passenger)
+    session.flush()
+    return passenger
+
+
+def upsert_boarding_pass_sync(
+    session: Session, flight_id: uuid.UUID, passenger_id: uuid.UUID, barcode: str,
+    seat_number: Optional[str] = None, cabin_class: Optional[str] = None,
+    boarding_group: Optional[str] = None, source: Optional[str] = None,
+    source_message_id: Optional[str] = None,
+) -> BoardingPass:
+    existing = session.execute(
+        select(BoardingPass).where(
+            BoardingPass.flight_id == flight_id, BoardingPass.passenger_id == passenger_id,
+        )
+    ).scalar_one_or_none()
+    if existing:
+        return existing
+    bp = BoardingPass(
+        flight_id=flight_id, passenger_id=passenger_id, barcode=barcode,
+        seat_number=seat_number, cabin_class=cabin_class, boarding_group=boarding_group,
+        source=source, source_message_id=source_message_id,
+    )
+    session.add(bp)
+    session.flush()
+    return bp
+
+
+def update_booking_metadata_sync(session: Session, booking_id: uuid.UUID) -> None:
+    flights = session.execute(
+        select(Flight).where(Flight.booking_id == booking_id).order_by(Flight.departure_time)
+    ).scalars().all()
+    if not flights:
+        return
+    booking = session.get(Booking, booking_id)
+    if not booking:
+        return
+    booking.booking_type = "direct" if len(flights) == 1 else "connecting"
+    booking.start_date = flights[0].departure_time.date() if flights[0].departure_time else None
+    booking.end_date = flights[-1].departure_time.date() if flights[-1].departure_time else None
+
+
+def get_existing_message_ids_sync(session: Session, user_id: str, source: str,
+                                   message_ids: list[str]) -> set[str]:
     uid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     rows = session.execute(
-        select(Flight.gmail_message_id).where(
-            Flight.user_id == uid,
-            Flight.gmail_message_id.in_(gmail_ids),
-        )
+        select(BoardingPass.source_message_id)
+        .join(Flight, BoardingPass.flight_id == Flight.id)
+        .join(Booking, Flight.booking_id == Booking.id)
+        .where(Booking.user_id == uid, BoardingPass.source == source,
+               BoardingPass.source_message_id.in_(message_ids))
     ).scalars().all()
     return set(rows)
+
+
+# ── Async CRUD (FastAPI) ──────────────────────────────────────────────────────
+
+def _booking_load_options():
+    return [
+        selectinload(Booking.airline_rel),
+        selectinload(Booking.flights).options(
+            selectinload(Flight.dep_airport),
+            selectinload(Flight.arr_airport),
+            selectinload(Flight.airline_rel),
+            selectinload(Flight.boarding_passes).selectinload(BoardingPass.passenger),
+        ),
+    ]
+
+
+async def list_bookings(session: AsyncSession, user_id: str,
+                     status_filter: Optional[str] = None) -> list[Booking]:
+    uid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+    stmt = (
+        select(Booking).where(Booking.user_id == uid)
+        .options(*_booking_load_options())
+        .order_by(Booking.created_at.asc())
+    )
+    today = date.today()
+    if status_filter == "upcoming":
+        stmt = stmt.where(Booking.start_date >= today)
+    elif status_filter == "completed":
+        stmt = stmt.where(Booking.end_date < today)
+    result = await session.execute(stmt)
+    return list(result.scalars().unique().all())
+
+
+async def get_booking(session: AsyncSession, user_id: str, booking_id: str) -> Optional[Booking]:
+    uid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+    bid = uuid.UUID(booking_id) if isinstance(booking_id, str) else booking_id
+    result = await session.execute(
+        select(Booking).where(Booking.id == bid, Booking.user_id == uid).options(*_booking_load_options())
+    )
+    return result.scalar_one_or_none()
+
+
+async def delete_booking(session: AsyncSession, user_id: str, booking_id: str) -> bool:
+    uid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+    bid = uuid.UUID(booking_id) if isinstance(booking_id, str) else booking_id
+    result = await session.execute(delete(Booking).where(Booking.id == bid, Booking.user_id == uid))
+    return result.rowcount > 0

@@ -5,12 +5,12 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python Debugger: Start vLEM server",
+      "name": "Python Debugger: Start FlightTrackr server",
       "type": "debugpy",
       "request": "launch",
       "module": "uvicorn",
       "justMyCode": true,
-      "args": ["main:app", "--reload"],
+      "args": ["app.main:app"],
       "cwd": "${workspaceFolder}/api",
       "envFile": "${workspaceFolder}/api/.env",
       "jinja": true

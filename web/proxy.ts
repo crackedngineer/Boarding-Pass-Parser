@@ -2,9 +2,9 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const PROTECTED = ['/dashboard']
 const AUTH_ONLY  = ['/login']
-// ft-auth is a presence-only flag cookie set by the callback page after
-// successful sign-in and cleared by useAuth on sign-out.
-const AUTH_COOKIE = 'ft-auth'
+// access_token is an HttpOnly cookie set by the backend OAuth callback.
+// The middleware can read it server-side to gate protected routes.
+const AUTH_COOKIE = 'access_token'
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
