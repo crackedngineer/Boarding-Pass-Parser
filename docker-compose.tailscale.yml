@@ -30,7 +30,7 @@ services:
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
-      # - "--providers.docker.network=boarding-pass-parser_app"
+      - "--providers.docker.network=flighttrackr_network"
       - "--entrypoints.web.address=:80"
       - "--log.level=INFO"
       - "--accesslog=true"
@@ -42,8 +42,6 @@ services:
         condition: service_healthy
     network_mode: service:tailscale
     restart: unless-stopped
-    networks:
-      - flighttrackr_network
 
   api:
     container_name: api
