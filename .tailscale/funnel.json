@@ -8,7 +8,7 @@
     "flighttrackr-api.tailcda03.ts.net:443": {
       "Handlers": {
         "/": {
-          "Proxy": "http://traefik:80"
+          "Proxy": "http://127.0.0.1:80"
         }
       }
     }
