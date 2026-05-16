@@ -1,31 +1,27 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Plane } from 'lucide-react'
 import { groupFlightsByPnr } from '@/lib/data/mock-flights'
-import { getFlight } from '@/lib/api/flight-service'
 import { useFlights } from '@/lib/hooks'
 import { BoardingPassTicket } from '@/components/boarding-pass-ticket'
 import { cn } from '@/lib/utils'
-import type { Flight } from '@/lib/types'
 
 export default function FlightDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router  = useRouter()
+  const { flights: allFlights, isLoading } = useFlights()
+  const [activeLeg, setActiveLeg] = useState<string | null>(null)
 
-  const [flight, setFlight] = useState<Flight | null>(null)
-  const [loading, setLoading] = useState(true)
-  const { flights: allFlights } = useFlights()
+  const flight      = allFlights.find(f => f.id === id) ?? null
+  const allGroups   = groupFlightsByPnr(allFlights)
+  const group       = flight ? allGroups.find(g => g.pnr === flight.pnr) : null
+  const legs        = group?.legs ?? (flight ? [flight] : [])
+  const currentFlight = legs.find(l => l.id === (activeLeg ?? id)) ?? flight
+  const upcoming    = currentFlight?.status === 'upcoming'
 
-  useEffect(() => {
-    getFlight(id as string)
-      .then(setFlight)
-      .catch(() => setFlight(null))
-      .finally(() => setLoading(false))
-  }, [id])
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Plane className="w-6 h-6 text-amber-400 animate-pulse" />
@@ -33,7 +29,7 @@ export default function FlightDetailPage() {
     )
   }
 
-  if (!flight) {
+  if (!flight || !currentFlight) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-3">
@@ -49,15 +45,6 @@ export default function FlightDetailPage() {
       </div>
     )
   }
-
-  // Find all legs with the same PNR (for connecting flights)
-  const allGroups = groupFlightsByPnr(allFlights)
-  const group = allGroups.find(g => g.pnr === flight.pnr)
-  const legs  = group?.legs ?? [flight]
-  const [activeLeg, setActiveLeg] = useState(flight.id)
-
-  const currentFlight = legs.find(l => l.id === activeLeg) ?? flight
-  const upcoming = currentFlight.status === 'upcoming'
 
   return (
     <div className="min-h-screen bg-background">
@@ -89,7 +76,7 @@ export default function FlightDetailPage() {
                   onClick={() => setActiveLeg(leg.id)}
                   className={cn(
                     'flex-1 flex items-center justify-center gap-2 h-10 rounded-lg border text-xs font-data tracking-[0.1em] transition-all',
-                    activeLeg === leg.id
+                    (activeLeg ?? id) === leg.id
                       ? upcoming
                         ? 'border-amber-500/50 bg-amber-500/10 text-amber-300'
                         : 'border-border bg-muted/30 text-foreground'

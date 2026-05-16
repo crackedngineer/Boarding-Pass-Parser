@@ -1,38 +1,23 @@
-<!-- code-review-graph MCP tools -->
-## MCP Tools: code-review-graph
+# GEMINI.md
 
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
+Read by Gemini CLI / Gemini Code Assist. Full architecture: see `CLAUDE.md`. Agent caveats and commands: see `AGENTS.md`.
 
-### When to use graph tools FIRST
+## Gemini-Specific Notes
 
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
+**Paths (Gemini tends to assume common layouts — these differ here):**
+- Backend is in `api/` — not `app/backend/` or `src/`
+- Frontend is in `web/` — not `app/frontend/` or `web/src/`
+- Next.js App Router pages live in `web/app/` — there is no `src/` directory
 
-Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+**Auth (do not use localStorage):**
+- The project uses HttpOnly cookies, not `localStorage`. Do not generate `localStorage.setItem('token', ...)`.
+- All HTTP requests must include `credentials: 'include'`. Use the existing `@/lib/api/http-client`.
 
-### Key Tools
+**Python:**
+- Use `async`/`await` throughout — all FastAPI route handlers, services, and DB operations are async.
+- Settings are loaded once via `@lru_cache` on `get_settings()` in `core/settings.py`. Do not instantiate `Settings()` directly.
 
-| Tool | Use when |
-|------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
-
-### Workflow
-
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.
+**Frontend:**
+- Tailwind CSS v4 — no `tailwind.config.js`. Theme tokens are CSS custom properties in `web/app/globals.css`.
+- `radix-ui` is imported from the v1 monorepo package (`import { Dialog } from 'radix-ui'`), not `@radix-ui/react-dialog`.
+- shadcn/ui components live in `web/components/ui/`. Check before re-generating.

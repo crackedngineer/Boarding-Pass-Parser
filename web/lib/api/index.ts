@@ -15,7 +15,7 @@ export { AuthService } from './auth-service';
 export { signInWithGoogle, signOut, connectGoogle, getMe } from './auth-service';
 
 // Flight functions
-export { listFlights, getFlight } from './flight-service';
+export { listBookings, getBooking } from './flight-service';
 
 // Gmail sync functions
 export { startGmailSync, getGmailSyncStatus } from './gmail-service';

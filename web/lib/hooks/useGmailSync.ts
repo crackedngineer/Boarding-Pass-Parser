@@ -5,7 +5,7 @@ import { startGmailSync, getGmailSyncStatus } from '@/lib/api/gmail-service';
 import type { GmailSyncState, GmailSyncStatus } from '@/lib/types';
 
 const STORAGE_KEY = 'flighttrackr_gmail_sync';
-const POLL_INTERVAL_MS = 2000;
+const POLL_INTERVAL_MS = 20000;
 
 function mapBackendStatus(
   backendStatus: string,

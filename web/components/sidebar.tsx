@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 
 const NAV = [
   { href: '/dashboard', icon: Plane,      label: 'Trips',  disabled: false },
-  { href: '/upload',    icon: UploadCloud, label: 'Upload', disabled: true  },
+  { href: '/upload',    icon: UploadCloud, label: 'Upload', disabled: false },
 ]
 
 function SidebarContent({ onNav }: { onNav?: () => void }) {

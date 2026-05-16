@@ -1,38 +1,28 @@
-<!-- code-review-graph MCP tools -->
-## MCP Tools: code-review-graph
+# AGENTS.md
 
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
+Read by non-Claude agents (Codex, Gemini, etc.). Claude Code reads `CLAUDE.md` instead, which has the full architecture and MCP tool guidance.
 
-### When to use graph tools FIRST
+## Quick Commands
 
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
+```bash
+# Backend (from api/)
+uv sync
+uv run uvicorn app.main:app --reload --port 8000
+uv run celery -A app.tasks.celery_app worker --loglevel=info
+uv run alembic upgrade head
+uv run pytest
 
-Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+# Frontend (from web/)
+npm install && npm run dev
+npx tsc --noEmit   # type-check
+npm run lint
+```
 
-### Key Tools
+## Agent Caveats
 
-| Tool | Use when |
-|------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
-
-### Workflow
-
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.
+- **Auth is cookie-only.** Never use `localStorage` for tokens. All `fetch` calls must use `credentials: 'include'`. The existing `http-client.ts` already does this — don't bypass it.
+- **Registering new routes:** Add the router to `api/app/core/app_factory.py`. Routes are not auto-discovered.
+- **Celery tasks:** Must be listed in the `include=` parameter in `api/app/tasks/celery_app.py`.
+- **GmailSyncContext** is only available inside the `/dashboard` segment — it is mounted in `web/app/dashboard/layout.tsx`. Do not call `useGmailSyncContext()` from pages outside this layout.
+- **`@/` path alias** resolves to `web/` (the frontend root), not `web/src/` or `web/app/`.
+- **Mail provider tokens** are Fernet-encrypted in the DB. Always use `MailTokenService` to read/write them — never store raw tokens.

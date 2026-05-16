@@ -1,21 +1,20 @@
-/**
- * Boarding Pass API service.
- * Handles boarding pass parsing and related API calls.
- */
-
 import httpClient from './http-client';
-import { 
-  UploadResponse, 
+import type { BookingResponse } from './flight-service';
+import {
   SupportedAirlinesResponse,
-  RequestConfig 
+  RequestConfig
 } from '@/lib/types';
+
+export async function uploadBoardingPass(file: File): Promise<BookingResponse> {
+  return httpClient.upload<BookingResponse>('/boarding-pass/upload', file);
+}
 
 export class BoardingPassService {
   /**
    * Parse boarding pass PDF file
    */
-  async parseBoardingPass(file: File, config?: RequestConfig): Promise<UploadResponse> {
-    return httpClient.upload<UploadResponse>('/boarding-pass/parse', file, config);
+  async parseBoardingPass(file: File, config?: RequestConfig): Promise<BookingResponse> {
+    return httpClient.upload<BookingResponse>('/boarding-pass/upload', file, config);
   }
 
   /**
