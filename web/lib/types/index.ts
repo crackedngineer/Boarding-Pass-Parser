@@ -87,15 +87,6 @@ export interface SupportedAirline {
   supported_features: string[];
 }
 
-export interface SupportedAirlinesResponse {
-  supported_airlines: SupportedAirline[];
-  total_supported: number;
-  generic_parser: {
-    available: boolean;
-    description: string;
-  };
-}
-
 // Health Check Types
 export interface HealthResponse {
   status: string;

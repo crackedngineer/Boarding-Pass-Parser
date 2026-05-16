@@ -35,6 +35,12 @@ class HttpClient {
       ...((options.headers as Record<string, string>) || {}),
     };
 
+    // FormData bodies must not have Content-Type set — the browser adds it
+    // automatically with the correct multipart boundary.
+    if (options.body instanceof FormData) {
+      delete headers['Content-Type'];
+    }
+
     const requestOptions: RequestInit = {
       ...options,
       headers,
