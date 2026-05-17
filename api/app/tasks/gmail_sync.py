@@ -18,7 +18,9 @@ from app.services.flight_service import (
     upsert_passenger_sync,
     upsert_boarding_pass_sync,
     update_booking_metadata_sync,
+    set_booking_document_url_sync,
 )
+from app.services.storage_service import upload_boarding_pass_pdf_sync
 from app.services.parser_service import BoardingPassService
 from app.parsers.factory import ParserFactory
 from app.core.settings import get_settings
@@ -50,7 +52,9 @@ def sync_gmail_boarding_passes(self: Task, user_id: str, job_id: str) -> dict:
         try:
             creds = load_connection_sync(session, user_id, "gmail")
             if not creds.refresh_token:
-                raise ValueError("No Gmail refresh token found — user must re-authenticate")
+                raise ValueError(
+                    "No Gmail refresh token found — user must re-authenticate"
+                )
 
             gmail = GmailService(creds.refresh_token)
 
@@ -67,7 +71,9 @@ def sync_gmail_boarding_passes(self: Task, user_id: str, job_id: str) -> dict:
                 session.commit()
                 return {"emails_scanned": 0, "passes_found": 0, "passes_saved": 0}
 
-            existing_ids = get_existing_message_ids_sync(session, user_id, "gmail", message_ids)
+            existing_ids = get_existing_message_ids_sync(
+                session, user_id, "gmail", message_ids
+            )
             new_ids = [mid for mid in message_ids if mid not in existing_ids]
 
             parser_service = BoardingPassService(factory=ParserFactory())
@@ -77,51 +83,87 @@ def sync_gmail_boarding_passes(self: Task, user_id: str, job_id: str) -> dict:
             for msg_id in new_ids:
                 try:
                     attachments = gmail.get_pdf_attachments(msg_id)
-                    for _filename, pdf_bytes in attachments:
+                    for filename, pdf_bytes in attachments:
                         try:
                             parsed = parser_service.process(pdf_bytes)
                             passes_found += 1
 
-                            airline = get_airline_by_iata_sync(session, parsed.operator_code or "")
+                            airline = get_airline_by_iata_sync(
+                                session, parsed.operator_code or ""
+                            )
                             if not airline:
-                                logger.warning(f"Unknown airline '{parsed.operator_code}', skipping")
+                                logger.warning(
+                                    f"Unknown airline '{parsed.operator_code}', skipping"
+                                )
                                 continue
 
-                            dep_airport = get_airport_by_iata_sync(session, parsed.origin or "")
-                            arr_airport = get_airport_by_iata_sync(session, parsed.destination or "")
+                            dep_airport = get_airport_by_iata_sync(
+                                session, parsed.origin or ""
+                            )
+                            arr_airport = get_airport_by_iata_sync(
+                                session, parsed.destination or ""
+                            )
                             if not dep_airport or not arr_airport:
                                 logger.warning(
                                     f"Unknown airport '{parsed.origin}'/'{parsed.destination}', skipping"
                                 )
                                 continue
 
-                            departure_dt = _parse_departure_to_datetime(parsed.departure_time)
+                            departure_dt = _parse_departure_to_datetime(
+                                parsed.departure_time
+                            )
                             if not departure_dt:
-                                logger.warning(f"Could not parse departure time '{parsed.departure_time}', skipping")
+                                logger.warning(
+                                    f"Could not parse departure time '{parsed.departure_time}', skipping"
+                                )
                                 continue
 
-                            flight_status = "upcoming" if departure_dt.date() >= date.today() else "completed"
+                            flight_status = (
+                                "upcoming"
+                                if departure_dt.date() >= date.today()
+                                else "completed"
+                            )
                             flight_number = f"{(parsed.operator_code or '').strip()}{(parsed.flight_number or '').strip()}"
 
                             with session.begin_nested():
+                                document_url = upload_boarding_pass_pdf_sync(
+                                    pdf_bytes,
+                                    user_id,
+                                    filename,
+                                    settings.supabase_storage_bucket,
+                                )
+
                                 booking = upsert_booking_sync(
-                                    session, user_id, airline.id,
-                                    parsed.pnr_code or "", source="gmail",
+                                    session,
+                                    user_id,
+                                    airline.id,
+                                    parsed.pnr_code or "",
+                                    source="gmail",
+                                    document_url=document_url,
                                 )
                                 flight = upsert_flight_sync(
-                                    session, booking.id, airline.id,
-                                    dep_airport.id, arr_airport.id,
-                                    flight_number, departure_dt,
+                                    session,
+                                    booking.id,
+                                    airline.id,
+                                    dep_airport.id,
+                                    arr_airport.id,
+                                    flight_number,
+                                    departure_dt,
                                 )
                                 flight.status = flight_status
                                 session.flush()
 
                                 passenger = upsert_passenger_sync(
-                                    session, booking.id,
-                                    parsed.passenger_firstname, parsed.passenger_lastname,
+                                    session,
+                                    booking.id,
+                                    parsed.passenger_firstname,
+                                    parsed.passenger_lastname,
                                 )
+
                                 upsert_boarding_pass_sync(
-                                    session, flight.id, passenger.id,
+                                    session,
+                                    flight.id,
+                                    passenger.id,
                                     barcode=parsed.barcode or "",
                                     seat_number=parsed.seat_number,
                                     cabin_class=parsed.cabin_class,
@@ -134,9 +176,13 @@ def sync_gmail_boarding_passes(self: Task, user_id: str, job_id: str) -> dict:
                             passes_saved += 1
 
                         except Exception as parse_err:
-                            logger.warning(f"Failed to parse PDF from msg {msg_id}: {parse_err}")
+                            logger.warning(
+                                f"Failed to parse PDF from msg {msg_id}: {parse_err}"
+                            )
                 except Exception as msg_err:
-                    logger.warning(f"Failed to fetch attachments for msg {msg_id}: {msg_err}")
+                    logger.warning(
+                        f"Failed to fetch attachments for msg {msg_id}: {msg_err}"
+                    )
 
             session.commit()
 

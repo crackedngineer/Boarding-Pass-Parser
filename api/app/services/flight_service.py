@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 from typing import Optional
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,6 +56,7 @@ def upsert_booking_sync(
     airline_id: int,
     pnr_code: str,
     source: str = "gmail",
+    document_url: Optional[str] = None,
 ) -> Booking:
     uid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     existing = session.execute(
@@ -68,7 +69,7 @@ def upsert_booking_sync(
     if existing:
         return existing
     booking = Booking(
-        user_id=uid, airline_id=airline_id, pnr_code=pnr_code, source=source
+        user_id=uid, airline_id=airline_id, pnr_code=pnr_code, source=source, document_url=document_url
     )
     session.add(booking)
     session.flush()
@@ -244,11 +245,18 @@ async def upsert_booking_async(
     airline_id: int,
     pnr_code: str,
     source: str = "upload",
+    document_url: Optional[str] = None,
 ) -> Booking:
     uid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     await session.execute(
         pg_insert(Booking)
-        .values(user_id=uid, airline_id=airline_id, pnr_code=pnr_code, source=source)
+        .values(
+            user_id=uid,
+            airline_id=airline_id,
+            pnr_code=pnr_code,
+            source=source,
+            document_url=document_url,
+        )
         .on_conflict_do_nothing(constraint="uq_bookings_user_airline_pnr")
     )
     result = await session.execute(
@@ -362,6 +370,22 @@ async def upsert_boarding_pass_async(
     return result.scalar_one()
 
 
+def set_booking_document_url_sync(
+    session: Session, booking_id: uuid.UUID, url: str
+) -> None:
+    session.execute(
+        update(Booking).where(Booking.id == booking_id).values(document_url=url)
+    )
+
+
+async def set_booking_document_url_async(
+    session: AsyncSession, booking_id: uuid.UUID, url: str
+) -> None:
+    await session.execute(
+        update(Booking).where(Booking.id == booking_id).values(document_url=url)
+    )
+
+
 async def update_booking_metadata_async(
     session: AsyncSession, booking_id: uuid.UUID
 ) -> None:
@@ -377,8 +401,12 @@ async def update_booking_metadata_async(
     if not booking:
         return
     booking.booking_type = "direct" if len(flights) == 1 else "connecting"
-    booking.start_date = flights[0].departure_time.date() if flights[0].departure_time else None
-    booking.end_date = flights[-1].departure_time.date() if flights[-1].departure_time else None
+    booking.start_date = (
+        flights[0].departure_time.date() if flights[0].departure_time else None
+    )
+    booking.end_date = (
+        flights[-1].departure_time.date() if flights[-1].departure_time else None
+    )
 
 
 # ── Async CRUD (FastAPI) ──────────────────────────────────────────────────────

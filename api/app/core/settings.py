@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_key: str
     supabase_service_role_key: Optional[str] = None
+    supabase_storage_bucket: str = "boarding-passes"
     database_url: str
     sync_database_url: str
 

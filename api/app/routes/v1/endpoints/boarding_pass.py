@@ -12,10 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db_session
 from app.core.exceptions import BoardingPassParsingException
+from app.core.settings import get_settings
 from app.parsers.factory import ParserFactory
 from app.schemas.flight_schema import BookingResponse
 from app.services import flight_service
 from app.services.parser_service import BoardingPassService
+from app.services.storage_service import upload_boarding_pass_pdf
 
 
 def get_boarding_pass_service() -> BoardingPassService:
@@ -39,6 +41,7 @@ def _validate_pdf(file: UploadFile) -> None:
             detail="File size too large. Maximum size is 5MB",
         )
 
+
 @router.post(
     "/upload",
     response_model=BookingResponse,
@@ -57,10 +60,14 @@ async def upload_boarding_pass(
     try:
         pdf_bytes = await file.read()
         if not pdf_bytes:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file uploaded")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file uploaded"
+            )
         parsed = parser_service.process(pdf_bytes)
     except BoardingPassParsingException as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        )
     except HTTPException:
         raise
     except Exception:
@@ -70,13 +77,17 @@ async def upload_boarding_pass(
         )
 
     # Validate required parsed fields
-    missing = [f for f, v in [
-        ("operator_code", parsed.operator_code),
-        ("origin", parsed.origin),
-        ("destination", parsed.destination),
-        ("departure_time", parsed.departure_time),
-        ("pnr_code", parsed.pnr_code),
-    ] if not v]
+    missing = [
+        f
+        for f, v in [
+            ("operator_code", parsed.operator_code),
+            ("origin", parsed.origin),
+            ("destination", parsed.destination),
+            ("departure_time", parsed.departure_time),
+            ("pnr_code", parsed.pnr_code),
+        ]
+        if not v
+    ]
     if missing:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -84,7 +95,9 @@ async def upload_boarding_pass(
         )
 
     # Resolve airline
-    airline = await flight_service.get_airline_by_iata_async(session, str(parsed.operator_code))
+    airline = await flight_service.get_airline_by_iata_async(
+        session, str(parsed.operator_code)
+    )
     if not airline:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -92,8 +105,12 @@ async def upload_boarding_pass(
         )
 
     # Resolve airports
-    dep_airport = await flight_service.get_airport_by_iata_async(session, str(parsed.origin))
-    arr_airport = await flight_service.get_airport_by_iata_async(session, str(parsed.destination))
+    dep_airport = await flight_service.get_airport_by_iata_async(
+        session, str(parsed.origin)
+    )
+    arr_airport = await flight_service.get_airport_by_iata_async(
+        session, str(parsed.destination)
+    )
     if not dep_airport:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -114,11 +131,26 @@ async def upload_boarding_pass(
         )
 
     flight_status = "upcoming" if departure_dt.date() >= date.today() else "completed"
-    flight_number = f"{(parsed.operator_code or '').strip()}{(parsed.flight_number or '').strip()}"
+    flight_number = (
+        f"{(parsed.operator_code or '').strip()}{(parsed.flight_number or '').strip()}"
+    )
+
+    settings = get_settings()
+    document_url = await upload_boarding_pass_pdf(
+        pdf_bytes,
+        user_id,
+        file.filename or "boarding_pass.pdf",
+        settings.supabase_storage_bucket,
+    )
 
     # Persist
     booking = await flight_service.upsert_booking_async(
-        session, user_id, airline.id, str(parsed.pnr_code), source="upload"
+        session,
+        user_id,
+        airline.id,
+        str(parsed.pnr_code),
+        source="upload",
+        document_url=document_url,
     )
     flight = await flight_service.upsert_flight_async(
         session,
@@ -145,6 +177,7 @@ async def upload_boarding_pass(
         source="upload",
     )
     await flight_service.update_booking_metadata_async(session, booking.id)
+
     await session.commit()
 
     saved = await flight_service.get_booking(session, user_id, str(booking.id))
